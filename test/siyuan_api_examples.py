@@ -5,7 +5,7 @@
 import asyncio
 from datetime import datetime
 
-from siyuan_api import SiYuanAPIClient, SiYuanError
+from utils.siyuan_api import SiYuanAPIClient, SiYuanError
 
 
 async def basic_usage_example():
