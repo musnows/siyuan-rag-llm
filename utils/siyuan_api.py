@@ -4,22 +4,16 @@
 """
 
 import json
-import logging
 import os
 from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
 from pydantic import BaseModel, Field
 
-# 加载环境变量
-from dotenv import load_dotenv
-# 尝试加载 .env 文件，如果不存在也不会报错
-load_dotenv(override=True)
+# 使用共享日志器（已在logger.py中加载环境变量）
+from .logger import get_logger
 
-
-# 配置日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SiYuanAPIResponse(BaseModel):
@@ -130,7 +124,7 @@ class SiYuanAPIClient:
                 if result.code != 0:
                     raise SiYuanError(result.code, result.msg)
 
-                logger.info(f"API 请求成功: {endpoint}")
+                logger.debug(f"API 请求成功: {endpoint}")
                 return result
 
         except aiohttp.ClientError as e:
