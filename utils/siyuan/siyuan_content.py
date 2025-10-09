@@ -83,6 +83,7 @@ class SiYuanContentExtractor:
                         children_ids=[child.id for child in note.children] if note.children else []
                     )
                     note_contents.append(note_content)
+                    await asyncio.sleep(0.2) # 避免给思源笔记造成过大压力
                 except Exception as e:
                     logger.warning(f"无法获取笔记内容: {note.id}, 错误: {e}")
 
