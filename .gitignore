@@ -13,3 +13,4 @@ wheels/
 # rag db
 *.sqlite3
 *.db
+data/
