@@ -10,6 +10,7 @@
 - ✅ **错误处理** - 完善的异常处理机制
 - ✅ **上下文管理** - 支持异步上下文管理器，自动管理会话
 - ✅ **日志记录** - 内置日志记录功能
+- ✅ **环境变量支持** - 支持 `.env` 文件和环境变量配置
 - ✅ **易于使用** - 简洁的 API 设计，易于集成
 
 ## 安装
@@ -67,6 +68,42 @@ if __name__ == "__main__":
 ```
 
 ### 环境变量配置
+
+#### 方法一：使用 .env 文件（推荐）
+
+1. 复制示例配置文件：
+```bash
+cp .env.example .env
+```
+
+2. 编辑 `.env` 文件：
+```bash
+# 思源笔记服务地址
+SIYUAN_HOST=127.0.0.1
+
+# 思源笔记服务端口
+SIYUAN_PORT=6806
+
+# API 访问令牌（在思源笔记设置-关于中查看）
+SIYUAN_TOKEN=your-api-token
+
+# 可选：请求超时时间（秒）
+SIYUAN_TIMEOUT=30
+```
+
+3. 使用 `.env` 配置创建客户端：
+```python
+from siyuan_api import SiYuanAPIClient
+
+# 自动从环境变量和 .env 文件加载配置
+async with SiYuanAPIClient.from_env() as client:
+    # 或者直接使用默认构造函数，也会自动加载环境变量
+    async with SiYuanAPIClient() as client:
+        version = await client.get_version()
+        print(f"版本: {version}")
+```
+
+#### 方法二：直接设置环境变量
 
 ```bash
 export SIYUAN_HOST="127.0.0.1"
@@ -276,6 +313,7 @@ siyuan-rag-llm/
 ├── test_siyuan_api.py # 单元测试
 ├── main.py           # 项目入口
 ├── pyproject.toml    # 项目配置
+├── .env.example      # 环境变量示例文件
 ├── README.md         # 项目文档
 └── API.md           # 思源笔记 API 文档
 ```

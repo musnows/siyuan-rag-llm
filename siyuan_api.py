@@ -5,10 +5,16 @@
 
 import json
 import logging
+import os
 from typing import Any, Dict, List, Optional, Union
 
 import aiohttp
 from pydantic import BaseModel, Field
+
+# 加载环境变量
+from dotenv import load_dotenv
+# 尝试加载 .env 文件，如果不存在也不会报错
+load_dotenv(override=True)
 
 
 # 配置日志
@@ -34,18 +40,23 @@ class SiYuanError(Exception):
 class SiYuanAPIClient:
     """思源笔记 API 客户端"""
 
-    def __init__(self, host: str = "127.0.0.1", port: int = 6806, token: str = "", timeout: int = 30):
+    def __init__(self, host: Optional[str] = None, port: Optional[int] = None,
+                 token: Optional[str] = None, timeout: int = 30):
         """
         初始化思源笔记 API 客户端
 
         Args:
-            host: 思源笔记服务地址
-            port: 思源笔记服务端口
-            token: API token，在思源笔记设置-关于中查看
+            host: 思源笔记服务地址，默认从环境变量 SIYUAN_HOST 获取，否则为 127.0.0.1
+            port: 思源笔记服务端口，默认从环境变量 SIYUAN_PORT 获取，否则为 6806
+            token: API token，默认从环境变量 SIYUAN_TOKEN 获取，在思源笔记设置-关于中查看
             timeout: 请求超时时间（秒）
         """
-        self.base_url = f"http://{host}:{port}"
-        self.token = token
+        # 从环境变量获取配置，如果参数未提供
+        self.host = host or os.getenv("SIYUAN_HOST", "127.0.0.1")
+        self.port = port or int(os.getenv("SIYUAN_PORT", "6806"))
+        self.token = token or os.getenv("SIYUAN_TOKEN", "")
+
+        self.base_url = f"http://{self.host}:{self.port}"
         self.timeout = aiohttp.ClientTimeout(total=timeout)
         self._session: Optional[aiohttp.ClientSession] = None
 
@@ -74,6 +85,24 @@ class SiYuanAPIClient:
         """关闭会话"""
         if self._session and not self._session.closed:
             await self._session.close()
+
+    @classmethod
+    def from_env(cls, timeout: int = 30) -> "SiYuanAPIClient":
+        """
+        从环境变量创建客户端实例
+
+        Args:
+            timeout: 请求超时时间（秒）
+
+        Returns:
+            SiYuanAPIClient: 客户端实例
+        """
+        return cls(
+            host=os.getenv("SIYUAN_HOST"),
+            port=int(os.getenv("SIYUAN_PORT", "6806")) if os.getenv("SIYUAN_PORT") else None,
+            token=os.getenv("SIYUAN_TOKEN"),
+            timeout=timeout
+        )
 
     async def _request(self, endpoint: str, data: Optional[Dict[str, Any]] = None) -> SiYuanAPIResponse:
         """

@@ -3,7 +3,6 @@
 """
 
 import asyncio
-import os
 from datetime import datetime
 
 from siyuan_api import SiYuanAPIClient, SiYuanError
@@ -11,12 +10,8 @@ from siyuan_api import SiYuanAPIClient, SiYuanError
 
 async def basic_usage_example():
     """基本使用示例"""
-    # 从环境变量获取配置
-    host = os.getenv("SIYUAN_HOST", "127.0.0.1")
-    port = int(os.getenv("SIYUAN_PORT", "6806"))
-    token = os.getenv("SIYUAN_TOKEN", "")
-
-    async with SiYuanAPIClient(host=host, port=port, token=token) as client:
+    # 使用新的 from_env 方法自动从环境变量加载配置
+    async with SiYuanAPIClient.from_env() as client:
         try:
             # 1. 获取系统信息
             print("=== 系统信息 ===")
@@ -124,11 +119,8 @@ async with SiYuanAPIClient() as client:
 
 async def advanced_usage_example():
     """高级使用示例"""
-    host = os.getenv("SIYUAN_HOST", "127.0.0.1")
-    port = int(os.getenv("SIYUAN_PORT", "6806"))
-    token = os.getenv("SIYUAN_TOKEN", "")
-
-    async with SiYuanAPIClient(host=host, port=port, token=token) as client:
+    # 使用新的 from_env 方法自动从环境变量加载配置
+    async with SiYuanAPIClient.from_env() as client:
         try:
             # 1. 批量操作
             print("=== 批量操作示例 ===")
@@ -190,11 +182,8 @@ async def advanced_usage_example():
 
 async def error_handling_example():
     """错误处理示例"""
-    host = os.getenv("SIYUAN_HOST", "127.0.0.1")
-    port = int(os.getenv("SIYUAN_PORT", "6806"))
-    token = os.getenv("SIYUAN_TOKEN", "")
-
-    async with SiYuanAPIClient(host=host, port=port, token=token) as client:
+    # 使用新的 from_env 方法自动从环境变量加载配置
+    async with SiYuanAPIClient.from_env() as client:
         # 1. 尝试操作不存在的文档
         print("=== 错误处理示例 ===")
         try:
