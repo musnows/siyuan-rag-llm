@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
 # 使用共享日志器（已在logger.py中加载环境变量）
-from .logger import get_logger
+from ..logger import get_logger
 
 logger = get_logger(__name__)
 

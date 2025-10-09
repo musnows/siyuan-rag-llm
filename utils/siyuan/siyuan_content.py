@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Iterator, AsyncIterator
 from dataclasses import dataclass
 
 # 使用共享日志器（已在logger.py中加载环境变量）
-from .logger import get_logger
+from ..logger import get_logger
 from .siyuan_workspace import SiYuanWorkspace, NoteInfo
 from .siyuan_api import SiYuanAPIClient
 
