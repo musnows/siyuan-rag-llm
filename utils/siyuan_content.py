@@ -3,7 +3,7 @@
 用于获取笔记本中所有笔记的markdown内容
 """
 
-from typing import Dict, List, Optional, Iterator
+from typing import Dict, List, Optional, Iterator, AsyncIterator
 from dataclasses import dataclass
 
 # 使用共享日志器（已在logger.py中加载环境变量）
@@ -89,7 +89,7 @@ class SiYuanContentExtractor:
         logger.info(f"成功获取 {len(note_contents)} 个笔记的内容")
         return note_contents
 
-    async def iterate_note_contents(self, notebook_id: str, include_children: bool = True) -> Iterator[NoteContent]:
+    async def iterate_note_contents(self, notebook_id: str, include_children: bool = True) -> AsyncIterator[NoteContent]:
         """
         迭代获取笔记内容（生成器模式，节省内存）
 
