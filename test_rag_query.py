@@ -208,13 +208,23 @@ async def test_agent_query_existing(rag_kb, collection_id: str, collection_name:
             print("请设置环境变量后重新测试")
             return
 
-        # 创建Agent
-        agent = create_rag_agent(
+        # 创建查询引擎 - 使用更低的相似度阈值以处理复杂查询
+        from utils.rag.rag_query import create_query_engine
+        query_engine_for_agent = create_query_engine(
+            knowledge_base=rag_kb,
+            similarity_threshold=0.3  # 降低相似度阈值，因为Agent查询通常更复杂
+        )
+
+        # 创建Agent，使用自定义的查询引擎
+        from utils.agent.rag_agent import RAGAgent
+        agent = RAGAgent(
             knowledge_base=rag_kb,
             model="gpt-3.5-turbo",
             max_tokens=1000,
             temperature=0.1
         )
+        # 替换默认的查询引擎
+        agent.query_engine = query_engine_for_agent
 
         print("🤖 Agent初始化成功")
 
