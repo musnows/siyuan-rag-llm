@@ -9,3 +9,7 @@ wheels/
 # Virtual environments
 .venv
 .env
+
+# rag db
+*.sqlite3
+*.db
