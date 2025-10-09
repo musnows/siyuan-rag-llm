@@ -3,6 +3,7 @@
 用于获取笔记本中所有笔记的markdown内容
 """
 
+import asyncio
 from typing import Dict, List, Optional, Iterator, AsyncIterator
 from dataclasses import dataclass
 
