@@ -304,22 +304,23 @@ class RAGAgent:
 
     def _build_messages(self, question: str, query_result: QueryResult) -> List[Dict[str, str]]:
         """构建消息列表"""
-        messages = [
-            {"role": "system", "content": self.system_prompt}
-        ]
+        # 构建系统消息内容
+        system_content = self.system_prompt
 
-        # 添加上下文
+        # 如果有上下文，将上下文信息合并到系统消息中
         if query_result.context:
-            context_message = f"""基于以下思源笔记内容回答问题：
+            context_info = f"""
 
 相关笔记内容：
 {query_result.context}
 
 请基于以上内容回答用户的问题。"""
-            messages.append({"role": "system", "content": context_message})
+            system_content += context_info
 
-        # 添加用户问题
-        messages.append({"role": "user", "content": question})
+        messages = [
+            {"role": "system", "content": system_content},
+            {"role": "user", "content": question}
+        ]
 
         return messages
 
