@@ -332,7 +332,7 @@ siyuan-rag-llm/
 
 ## 许可证
 
-MIT License
+本项目采用 [MIT 许可证](LICENSE)。
 
 ## 相关链接
 
