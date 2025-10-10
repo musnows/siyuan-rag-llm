@@ -112,7 +112,8 @@ class RAGKnowledgeBase:
                                   include_children: bool = True,
                                   chunk_size: int = 1000,
                                   chunk_overlap: int = 200,
-                                  batch_size: int = 10) -> int:
+                                  batch_size: int = 10,
+                                  force_rebuild: bool = False) -> int:
         """
         构建知识库
 
@@ -122,14 +123,23 @@ class RAGKnowledgeBase:
             chunk_size: 文档分块大小
             chunk_overlap: 分块重叠大小
             batch_size: 批处理大小
+            force_rebuild: 是否强制重建（覆盖现有数据）
 
         Returns:
             int: 成功处理的文档数量
         """
         logger.info(f"开始为笔记本 {notebook_id} 构建知识库")
 
-        # 清空现有数据（如果存在）
-        await self.clear_notebook_data(notebook_id)
+        # 检查是否已存在该笔记本的数据
+        existing_count = await self.get_notebook_document_count(notebook_id)
+        if existing_count > 0 and not force_rebuild:
+            logger.info(f"笔记本 {notebook_id} 已存在 {existing_count} 个文档块，跳过构建")
+            return existing_count
+
+        # 如果强制重建或存在数据，先清空
+        if existing_count > 0:
+            logger.info(f"清空笔记本 {notebook_id} 的现有数据 ({existing_count} 个文档块)")
+            await self.clear_notebook_data(notebook_id)
 
         # 获取所有笔记内容
         note_contents = await self.content_extractor.get_all_note_contents(
@@ -209,6 +219,17 @@ class RAGKnowledgeBase:
 
         except Exception as e:
             logger.error(f"批量插入文档失败: {e}")
+            return 0
+
+    async def get_notebook_document_count(self, notebook_id: str) -> int:
+        """获取指定笔记本的文档数量"""
+        try:
+            results = self.collection.get(
+                where={"notebook_id": notebook_id}
+            )
+            return len(results["ids"]) if results["ids"] else 0
+        except Exception as e:
+            logger.error(f"获取笔记本文档数量失败: {e}")
             return 0
 
     async def clear_notebook_data(self, notebook_id: str):
@@ -387,6 +408,23 @@ class RAGKnowledgeBase:
             }
         except Exception as e:
             logger.error(f"获取集合统计信息失败: {e}")
+            return {}
+
+    async def get_all_notebooks_stats(self) -> Dict[str, int]:
+        """获取所有笔记本的统计信息"""
+        try:
+            # 获取所有文档
+            all_results = self.collection.get(include=["metadatas"])
+
+            notebook_stats = {}
+            if all_results["metadatas"]:
+                for metadata in all_results["metadatas"]:
+                    notebook_id = metadata.get("notebook_id", "unknown")
+                    notebook_stats[notebook_id] = notebook_stats.get(notebook_id, 0) + 1
+
+            return notebook_stats
+        except Exception as e:
+            logger.error(f"获取笔记本统计信息失败: {e}")
             return {}
 
     async def rebuild_knowledge_base(self, notebook_id: str, **kwargs) -> int:
