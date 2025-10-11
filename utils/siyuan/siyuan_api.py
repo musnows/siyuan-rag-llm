@@ -259,6 +259,14 @@ class SiYuanAPIClient:
         })
         return response.data
 
+    async def list_doc_tree(self, notebook_id: str, path: str = "/") -> List[Dict[str, Any]]:
+        """列出文档树"""
+        response = await self._request("/api/filetree/listDocTree", {
+            "notebook": notebook_id,
+            "path": path
+        })
+        return response.data.get("tree", [])
+
     # ========== 块相关 API ==========
 
     async def insert_block(self, data: str, data_type: str = "markdown",

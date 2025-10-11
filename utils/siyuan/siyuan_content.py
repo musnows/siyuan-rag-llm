@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from ..logger import get_logger
 from .siyuan_workspace import SiYuanWorkspace, NoteInfo
 from .siyuan_api import SiYuanAPIClient
+from .siyuan_api_traversal import SiYuanAPITraversal
 
 logger = get_logger(__name__)
 
@@ -33,16 +34,31 @@ class NoteContent:
 class SiYuanContentExtractor:
     """思源笔记内容提取器"""
 
-    def __init__(self, workspace_path: Optional[str] = None):
+    def __init__(self, workspace_path: Optional[str] = None, use_api_traversal: bool = True):
         """
         初始化内容提取器
 
         Args:
             workspace_path: 思源笔记工作空间路径，默认从环境变量获取
+            use_api_traversal: 是否使用API遍历（默认True），False则使用本地文件遍历
         """
-        self.workspace = SiYuanWorkspace(workspace_path)
-        self.api_client = SiYuanAPIClient.from_env()
-        logger.info(f"初始化思源笔记内容提取器") 
+        self.use_api_traversal = use_api_traversal
+
+        if use_api_traversal:
+            # 使用API遍历（推荐方式）
+            self.api_traversal = None  # 延迟初始化
+            self.api_client = SiYuanAPIClient.from_env()
+            logger.info(f"初始化思源笔记内容提取器（使用API遍历）")
+        else:
+            # 使用本地文件遍历（兼容方式）
+            self.workspace = SiYuanWorkspace(workspace_path)
+            self.api_client = SiYuanAPIClient.from_env()
+            logger.info(f"初始化思源笔记内容提取器（使用本地文件遍历）")
+
+    async def _ensure_api_traversal(self):
+        """确保API遍历器已初始化"""
+        if self.use_api_traversal and self.api_traversal is None:
+            self.api_traversal = SiYuanAPITraversal(self.api_client)
 
     async def get_all_note_contents(self, notebook_id: str, include_children: bool = True) -> List[NoteContent]:
         """
@@ -57,14 +73,26 @@ class SiYuanContentExtractor:
         """
         logger.info(f"开始获取笔记本 {notebook_id} 的所有笔记内容")
 
+        # 确保API遍历器已初始化
+        await self._ensure_api_traversal()
+
         # 获取笔记结构
-        if include_children:
-            root_notes = self.workspace.get_all_notes_from_notebook(notebook_id)
-            all_notes = self._flatten_note_tree(root_notes)
+        if self.use_api_traversal:
+            # 使用API遍历
+            if include_children:
+                root_notes = await self.api_traversal.get_all_notes_from_notebook(notebook_id)
+                all_notes = self._flatten_note_tree(root_notes)
+            else:
+                root_notes = await self.api_traversal.get_all_notes_from_notebook(notebook_id)
+                all_notes = root_notes
         else:
-            # 只获取根笔记ID
-            root_notes = self.workspace.get_all_notes_from_notebook(notebook_id)
-            all_notes = root_notes
+            # 使用本地文件遍历
+            if include_children:
+                root_notes = self.workspace.get_all_notes_from_notebook(notebook_id)
+                all_notes = self._flatten_note_tree(root_notes)
+            else:
+                root_notes = self.workspace.get_all_notes_from_notebook(notebook_id)
+                all_notes = root_notes
 
         # 获取每个笔记的内容
         note_contents = []
@@ -104,13 +132,26 @@ class SiYuanContentExtractor:
         """
         logger.info(f"开始迭代获取笔记本 {notebook_id} 的笔记内容")
 
+        # 确保API遍历器已初始化
+        await self._ensure_api_traversal()
+
         # 获取笔记结构
-        if include_children:
-            root_notes = self.workspace.get_all_notes_from_notebook(notebook_id)
-            all_notes = self._flatten_note_tree(root_notes)
+        if self.use_api_traversal:
+            # 使用API遍历
+            if include_children:
+                root_notes = await self.api_traversal.get_all_notes_from_notebook(notebook_id)
+                all_notes = self._flatten_note_tree(root_notes)
+            else:
+                root_notes = await self.api_traversal.get_all_notes_from_notebook(notebook_id)
+                all_notes = root_notes
         else:
-            root_notes = self.workspace.get_all_notes_from_notebook(notebook_id)
-            all_notes = root_notes
+            # 使用本地文件遍历
+            if include_children:
+                root_notes = self.workspace.get_all_notes_from_notebook(notebook_id)
+                all_notes = self._flatten_note_tree(root_notes)
+            else:
+                root_notes = self.workspace.get_all_notes_from_notebook(notebook_id)
+                all_notes = root_notes
 
         # 逐个获取笔记内容
         async with self.api_client:
@@ -173,14 +214,22 @@ class SiYuanContentExtractor:
         """
         logger.info(f"获取笔记内容: {note_id}")
 
-        # 获取笔记路径
-        note_path = self.workspace.get_note_path_by_id(notebook_id, note_id)
-        if not note_path:
-            logger.warning(f"找不到笔记路径: {note_id}")
-            return None
+        # 确保API遍历器已初始化
+        await self._ensure_api_traversal()
 
-        # 提取标题
-        note_info = self.workspace.get_note_info_by_id(notebook_id, note_id)
+        # 获取笔记信息
+        if self.use_api_traversal:
+            # 使用API遍历
+            note_info = await self.api_traversal.get_note_info_by_id(notebook_id, note_id)
+            note_path = note_info.path if note_info else ""
+        else:
+            # 使用本地文件遍历
+            note_path = self.workspace.get_note_path_by_id(notebook_id, note_id)
+            if not note_path:
+                logger.warning(f"找不到笔记路径: {note_id}")
+                return None
+            note_info = self.workspace.get_note_info_by_id(notebook_id, note_id)
+
         if not note_info:
             logger.warning(f"无法获取笔记信息: {note_id}")
             return None
@@ -262,28 +311,31 @@ class SiYuanContentExtractor:
 
     
 
-def create_content_extractor(workspace_path: Optional[str] = None) -> SiYuanContentExtractor:
+def create_content_extractor(workspace_path: Optional[str] = None, use_api_traversal: bool = True) -> SiYuanContentExtractor:
     """
     创建内容提取器的便捷函数
 
     Args:
         workspace_path: 工作空间路径
+        use_api_traversal: 是否使用API遍历（默认True），False则使用本地文件遍历
 
     Returns:
         SiYuanContentExtractor: 内容提取器实例
     """
-    return SiYuanContentExtractor(workspace_path)
+    return SiYuanContentExtractor(workspace_path, use_api_traversal)
 
 
 async def main():
     """测试代码"""
-    extractor = create_content_extractor("~/data/notes/siyuan")
+    extractor = create_content_extractor(use_api_traversal=True)  # 使用API遍历
 
     # 获取所有笔记本
-    notebooks = extractor.workspace.list_notebooks()
+    from .siyuan_api_traversal import create_api_traversal_from_env
+    traversal = await create_api_traversal_from_env()
+    notebooks = await traversal.list_notebooks()
     if notebooks:
         # 测试第一个笔记本
-        test_notebook_id = notebooks[-1][0]
+        test_notebook_id = notebooks[0]['id']
         print(f"测试笔记本: {test_notebook_id}")
 
         # 获取前3个笔记的内容
