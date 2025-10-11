@@ -1,17 +1,18 @@
-# 思源笔记 API 工具包
+# 思源笔记 RAG + Agent 智能问答系统
 
-一个基于 `aiohttp` 的思源笔记 API 客户端工具包，提供了完整、类型安全、异步的思源笔记 API 接口封装。
+基于思源笔记的RAG知识库构建和智能问答系统，通过思源笔记API获取笔记内容，构建向量索引，并通过AI Agent进行智能问答。
 
 ## 特性
 
-- ✅ **完整的 API 覆盖** - 实现了思源笔记官方 API 文档中的所有接口
-- ✅ **异步支持** - 基于 `aiohttp` 的异步客户端，支持高并发操作
-- ✅ **类型安全** - 使用 `pydantic` 进行数据验证和类型提示
-- ✅ **错误处理** - 完善的异常处理机制
-- ✅ **上下文管理** - 支持异步上下文管理器，自动管理会话
-- ✅ **日志记录** - 内置日志记录功能
-- ✅ **环境变量支持** - 支持 `.env` 文件和环境变量配置
-- ✅ **易于使用** - 简洁的 API 设计，易于集成
+- 🚀 **完整的RAG系统** - 从思源笔记提取内容，构建向量知识库
+- 🤖 **智能Agent问答** - 基于OpenAI GPT的智能对话助手
+- 📚 **多笔记本支持** - 同时管理多个笔记本的知识库
+- 🔍 **语义搜索** - 基于embedding的相似度搜索
+- 💾 **持久化存储** - 使用ChromaDB持久化向量数据
+- 🎯 **上下文感知** - 支持上下文增强查询
+- 📊 **统计分析** - 完整的知识库统计和监控
+- 🛠️ **灵活配置** - 支持本地和OpenAI embedding模型
+- 🔄 **增量更新** - 支持知识库的增量更新和重建
 
 ## 安装
 
@@ -19,6 +20,8 @@
 
 - Python 3.13+
 - uv 包管理器
+- 思源笔记（需要开启API服务）
+- OpenAI API Key（用于GPT对话）
 
 ### 安装步骤
 
@@ -42,293 +45,187 @@ source .venv/bin/activate  # Linux/Mac
 
 ## 快速开始
 
-### 基本使用
+### 1. 环境配置
 
-```python
-import asyncio
-from siyuan_api import SiYuanAPIClient
+创建 `.env` 文件并配置必要的环境变量，参考 [.env.example](./.env.example)
 
-async def main():
-    # 创建客户端
-    async with SiYuanAPIClient(
-        host="127.0.0.1",
-        port=6806,
-        token="your-api-token"  # 在思源笔记设置-关于中查看
-    ) as client:
-        # 获取版本信息
-        version = await client.get_version()
-        print(f"思源笔记版本: {version}")
+####  必需环境变量
 
-        # 列出笔记本
-        notebooks = await client.ls_notebooks()
-        print(f"找到 {len(notebooks)} 个笔记本")
+- `SIYUAN_WORKSPACE_PATH`: 思源笔记工作空间路径
+- `OPENAI_API_KEY`: OpenAI API密钥
 
-if __name__ == "__main__":
-    asyncio.run(main())
-```
+#### 可选环境变量
 
-### 环境变量配置
+- `OPENAI_BASE_URL`: OpenAI API基础URL（默认：https://api.openai.com/v1）
+- `SIYUAN_HOST`: 思源笔记服务地址（默认：127.0.0.1）
+- `SIYUAN_PORT`: 思源笔记服务端口（默认：6806）
+- `SIYUAN_TOKEN`: 思源笔记API Token
+- `EMBEDDING_MODEL`: Embedding模型名称
 
-#### 方法一：使用 .env 文件（推荐）
+#### 配置来源
 
-1. 复制示例配置文件：
-```bash
-cp .env.example .env
-```
+思源笔记配置：
 
-2. 编辑 `.env` 文件：
-```bash
-# 思源笔记服务地址
-SIYUAN_HOST=127.0.0.1
+1. **获取工作空间路径**：
+   - 打开思源笔记
+   - 进入 **设置** → **关于**
+   - 查看工作空间路径
 
-# 思源笔记服务端口
-SIYUAN_PORT=6806
+2. **启用API服务**：
+   - 进入 **设置** → **API**
+   - 开启 "打开 API"
+   - 复制 API Token
 
-# API 访问令牌（在思源笔记设置-关于中查看）
-SIYUAN_TOKEN=your-api-token
+Embedding模型选择：
 
-# 可选：请求超时时间（秒）
-SIYUAN_TIMEOUT=30
-```
+**默认模型**（不推荐，效果很差）：
+- `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`（默认，支持中文）
+- `sentence-transformers/all-MiniLM-L6-v2`
 
-3. 使用 `.env` 配置创建客户端：
-```python
-from siyuan_api import SiYuanAPIClient
+**OpenAI模型**（建议本地LM Studio或ollama部署embedding模型）：
+- `text-embedding-qwen3-embedding-0.6b`
+- `text-embedding-qwen3-embedding-4b`
 
-# 自动从环境变量和 .env 文件加载配置
-async with SiYuanAPIClient.from_env() as client:
-    # 或者直接使用默认构造函数，也会自动加载环境变量
-    async with SiYuanAPIClient() as client:
-        version = await client.get_version()
-        print(f"版本: {version}")
-```
-
-#### 方法二：直接设置环境变量
+### 2. 启动交互式问答系统
 
 ```bash
-export SIYUAN_HOST="127.0.0.1"
-export SIYUAN_PORT="6806"
-export SIYUAN_TOKEN="your-api-token"
+uv run python main.py
 ```
 
-### 创建文档
+系统会自动：
+- 连接思源笔记工作空间
+- 初始化RAG知识库
+- 让您选择要处理的笔记本
+- 构建向量索引
+- 启动交互式问答界面
 
-```python
-async def create_document():
-    async with SiYuanAPIClient() as client:
-        # 获取第一个笔记本
-        notebooks = await client.ls_notebooks()
-        if not notebooks:
-            print("没有找到笔记本")
-            return
-
-        notebook_id = notebooks[0]['id']
-
-        # 创建文档
-        doc_id = await client.create_doc_with_md(
-            notebook_id=notebook_id,
-            path="/test/my-doc",
-            markdown="# 我的文档\n\n这是通过 API 创建的文档。"
-        )
-        print(f"文档创建成功，ID: {doc_id}")
-```
-
-## API 功能模块
-
-### 1. 笔记本管理
-
-```python
-# 列出笔记本
-notebooks = await client.ls_notebooks()
-
-# 创建笔记本
-notebook = await client.create_notebook("新笔记本")
-
-# 打开/关闭笔记本
-await client.open_notebook(notebook_id)
-await client.close_notebook(notebook_id)
-
-# 重命名笔记本
-await client.rename_notebook(notebook_id, "新名称")
-
-# 删除笔记本
-await client.remove_notebook(notebook_id)
-```
-
-### 2. 文档管理
-
-```python
-# 创建文档
-doc_id = await client.create_doc_with_md(
-    notebook_id=notebook_id,
-    path="/path/to/doc",
-    markdown="# 标题\n\n内容"
-)
-
-# 重命名文档
-await client.rename_doc(notebook_id, "/path/to/doc", "新标题")
-
-# 移动文档
-await client.move_docs(["/path/to/doc"], to_notebook_id, "/new/path")
-
-# 删除文档
-await client.remove_doc(notebook_id, "/path/to/doc")
-```
-
-### 3. 块操作
-
-```python
-# 插入块
-block = await client.insert_block(
-    data="这是一个新块",
-    data_type="markdown",
-    parent_id=doc_id
-)
-
-# 更新块
-await client.update_block(block_id, "更新后的内容")
-
-# 删除块
-await client.delete_block(block_id)
-
-# 移动块
-await client.move_block(block_id, previous_id=prev_id, parent_id=parent_id)
-
-# 获取子块
-children = await client.get_child_blocks(parent_id)
-```
-
-### 4. 属性管理
-
-```python
-# 设置块属性
-await client.set_block_attrs(block_id, {
-    "custom-tag": "重要",
-    "custom-priority": "high"
-})
-
-# 获取块属性
-attrs = await client.get_block_attrs(block_id)
-```
-
-### 5. SQL 查询
-
-```python
-# 执行 SQL 查询
-results = await client.query_sql(
-    "SELECT * FROM blocks WHERE content LIKE '%关键词%' LIMIT 10"
-)
-
-# 提交事务
-await client.flush_transaction()
-```
-
-### 6. 文件操作
-
-```python
-# 写入文件
-await client.put_file("/temp/test.txt", "文件内容")
-
-# 读取文件
-content = await client.get_file("/temp/test.txt")
-
-# 列出目录
-files = await client.read_dir("/temp/")
-
-# 删除文件
-await client.remove_file("/temp/test.txt")
-```
-
-### 7. 导出功能
-
-```python
-# 导出 Markdown
-export_data = await client.export_md_content(doc_id)
-print(export_data["content"])
-
-# 导出资源文件
-zip_path = await client.export_resources(["/path/to/files"], "export-name")
-```
-
-## 运行示例
-
-项目包含了完整的使用示例：
+### 3. 命令行使用
 
 ```bash
-# 运行基本示例
-python examples.py
+# 构建知识库
+uv run python build_knowledge_base.py
 
-# 运行测试
-python test_siyuan_api.py
+# 指定特定笔记本构建
+uv run python build_knowledge_base.py --notebook YOUR_NOTEBOOK_ID
+
+# 强制重建现有知识库
+uv run python build_knowledge_base.py --force
+
+# 使用特定embedding模型
+uv run python build_knowledge_base.py --model text-embedding-3-small
 ```
 
-## 错误处理
+## 系统架构
 
-```python
-from siyuan_api import SiYuanAPIClient, SiYuanError
+### 核心组件
 
-async def handle_errors():
-    async with SiYuanAPIClient() as client:
-        try:
-            # 尝试操作不存在的资源
-            await client.get_hpath_by_id("non-existent-id")
-        except SiYuanError as e:
-            print(f"API 错误 {e.code}: {e.msg}")
-        except Exception as e:
-            print(f"其他错误: {e}")
+1. **思源笔记连接器** (`utils/siyuan/`)
+   - `siyuan_api.py`: 完整的思源笔记API客户端封装
+   - `siyuan_workspace.py`: 工作空间管理和笔记遍历
+   - `siyuan_content.py`: 内容提取和预处理
+
+2. **RAG知识库** (`utils/rag/`)
+   - `rag_knowledge_base.py`: 向量知识库管理
+   - `rag_query.py`: 查询引擎和搜索算法
+   - 支持ChromaDB持久化存储
+
+3. **智能Agent** (`utils/agent/`)
+   - `rag_agent.py`: 基于GPT的对话助手
+   - `rag_tools.py`: 工具函数和辅助功能
+   - `react_agent.py`: ReAct模式的推理代理
+
+4. **嵌入模型** (`utils/embeddings/`)
+   - 支持本地sentence-transformers模型
+   - 支持OpenAI embedding API
+   - 灵活的模型切换机制
+
+### 交互式界面功能
+
+- 📋 **笔记本选择**: 智能识别和选择可用笔记本
+- 🔨 **知识库构建**: 自动化文档分块和向量化
+- 💬 **智能问答**: 基于RAG的上下文问答
+- 📊 **统计监控**: 实时知识库状态监控
+- 🔄 **动态更新**: 支持知识库增量更新
+- 🧪 **测试查询**: 内置测试功能验证系统状态
+
+### 交互式命令
+
+在交互式界面中，您可以使用以下命令：
+
+```
+/help 或 /?        # 显示帮助信息
+/stats             # 显示知识库统计信息
+/notebooks         # 显示所有笔记本统计信息
+/clear             # 清空对话历史
+/notebook          # 重新选择笔记本
+/rebuild           # 重建当前笔记本知识库
+/test              # 运行测试查询
+/quit 或 /exit     # 退出程序
 ```
 
-## 配置说明
-
-### API Token 获取
-
-1. 打开思源笔记
-2. 进入 **设置** → **关于**
-3. 复制 **API token**
-
-### 网络配置
-
-默认配置：
-- 主机：`127.0.0.1`
-- 端口：`6806`
-- 协议：`http`
-
-如需修改，可在创建客户端时指定：
-
-```python
-client = SiYuanAPIClient(
-    host="192.168.1.100",
-    port=6806,
-    token="your-token",
-    timeout=60  # 超时时间（秒）
-)
-```
-
-## 项目结构
+### 项目结构
 
 ```
 siyuan-rag-llm/
-├── siyuan_api.py      # 主要的 API 客户端
-├── examples.py        # 使用示例
-├── test_siyuan_api.py # 单元测试
-├── main.py           # 项目入口
-├── pyproject.toml    # 项目配置
-├── .env.example      # 环境变量示例文件
-├── README.md         # 项目文档
-└── API.md           # 思源笔记 API 文档
+├── main.py                           # 交互式系统入口
+├── build_knowledge_base.py           # 知识库构建工具
+├── pyproject.toml                    # 项目配置和依赖
+├── .env.example                      # 环境变量示例
+├── README.md                         # 项目文档
+├── SIYUAN_API.md                     # 思源笔记API文档
+├── utils/                            # 工具模块
+│   ├── siyuan/                       # 思源笔记相关
+│   │   ├── siyuan_api.py            # API客户端
+│   │   ├── siyuan_workspace.py      # 工作空间管理
+│   │   └── siyuan_content.py        # 内容提取
+│   ├── rag/                          # RAG知识库
+│   │   ├── rag_knowledge_base.py    # 知识库管理
+│   │   ├── rag_query.py             # 查询引擎
+│   │   └── __init__.py
+│   ├── agent/                        # 智能Agent
+│   │   ├── rag_agent.py             # RAG对话助手
+│   │   ├── rag_tools.py             # 工具函数
+│   │   ├── react_agent.py           # ReAct代理
+│   │   └── __init__.py
+│   ├── embeddings/                   # 嵌入模型
+│   │   └── openai_embedding.py      # OpenAI嵌入
+│   ├── content_filter.py             # 内容过滤
+│   └── logger.py                     # 日志工具
+├── test/                             # 测试文件
+│   ├── test_rag_system.py           # RAG系统测试
+│   └── test_rag_query.py            # 查询功能测试
+└── data/                            # 数据目录
+    └── rag_db/                      # 向量数据库存储
 ```
 
-## 开发计划
 
-- [ ] 添加更多高级功能示例
-- [ ] 支持批量操作优化
-- [ ] 添加缓存机制
-- [ ] 实现重试机制
-- [ ] 添加 WebSocket 支持
+## 常见问题
+
+### Q: 如何处理大型笔记本？
+A: 系统会自动进行分块处理，但对于特别大的笔记本，建议：
+- 分批构建知识库
+- 增加批处理大小
+- 使用更高效的embedding模型
+
+### Q: 查询结果不准确怎么办？
+A: 可以尝试：
+- 调整相似度阈值
+- 重建知识库并使用不同的分块策略
+- 使用更高质量的embedding模型
+- 优化问题的表述方式
+
+### Q: 如何更新知识库？
+A: 使用 `/rebuild` 命令或重新运行构建程序，系统会自动检测变化并更新。
+
 
 ## 贡献指南
 
 欢迎提交 Issue 和 Pull Request！
+
+1. Fork 项目
+2. 创建特性分支
+3. 提交更改
+4. 发起 Pull Request
 
 ## 许可证
 
@@ -338,5 +235,6 @@ siyuan-rag-llm/
 
 - [思源笔记官网](https://b3log.org/siyuan/)
 - [思源笔记 API 文档](https://github.com/siyuan-note/siyuan/blob/master/API_zh_CN.md)
-- [aiohttp 文档](https://docs.aiohttp.org/)
-- [pydantic 文档](https://pydantic-docs.helpmanual.io/)
+- [ChromaDB 文档](https://docs.trychroma.com/)
+- [OpenAI API 文档](https://platform.openai.com/docs)
+- [Sentence Transformers](https://www.sbert.net/)
