@@ -18,6 +18,9 @@ import chromadb
 from chromadb.config import Settings as ChromaSettings
 from chromadb.utils import embedding_functions
 
+# OpenAI嵌入函数
+from ..embeddings.openai_embedding import create_openai_embedding_function
+
 logger = get_logger(__name__)
 
 
@@ -51,7 +54,10 @@ class RAGKnowledgeBase:
     def __init__(self,
                  persist_directory: Optional[str] = None,
                  embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
-                 collection_name: str = "siyuan_notes"):
+                 collection_name: str = "siyuan_notes",
+                 use_openai_embedding: bool = False,
+                 openai_api_key: Optional[str] = None,
+                 openai_api_base: Optional[str] = None):
         """
         初始化RAG知识库
 
@@ -59,12 +65,18 @@ class RAGKnowledgeBase:
             persist_directory: 向量数据库持久化目录
             embedding_model: 嵌入模型名称
             collection_name: 集合名称
+            use_openai_embedding: 是否使用OpenAI嵌入模型
+            openai_api_key: OpenAI API Key
+            openai_api_base: OpenAI API Base URL
         """
         self.persist_directory = persist_directory or os.path.join(
             os.getcwd(), "data", "rag_db"
         )
         self.embedding_model = embedding_model
         self.collection_name = collection_name
+        self.use_openai_embedding = use_openai_embedding
+        self.openai_api_key = openai_api_key
+        self.openai_api_base = openai_api_base
 
         # 确保持久化目录存在
         Path(self.persist_directory).mkdir(parents=True, exist_ok=True)
@@ -80,10 +92,21 @@ class RAGKnowledgeBase:
     def _init_chroma_db(self):
         """初始化ChromaDB"""
         try:
-            # 创建嵌入函数
-            self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
-                model_name=self.embedding_model
-            )
+            # 根据配置选择嵌入函数
+            if self.use_openai_embedding:
+                logger.info("使用OpenAI嵌入模型")
+                self.embedding_function = create_openai_embedding_function(
+                    model_name=self.embedding_model,
+                    api_key=self.openai_api_key,
+                    api_base=self.openai_api_base
+                )
+                embedding_type = "OpenAI"
+            else:
+                logger.info(f"使用HuggingFace嵌入模型: {self.embedding_model}")
+                self.embedding_function = embedding_functions.SentenceTransformerEmbeddingFunction(
+                    model_name=self.embedding_model
+                )
+                embedding_type = "Local"
 
             # 初始化ChromaDB客户端
             self.client = chromadb.PersistentClient(
@@ -95,13 +118,17 @@ class RAGKnowledgeBase:
             )
 
             # 获取或创建集合
+            collection_metadata = {"hnsw:space": "cosine", "embedding_type": embedding_type}
+            if self.use_openai_embedding:
+                collection_metadata["embedding_model"] = self.embedding_model
+
             self.collection = self.client.get_or_create_collection(
                 name=self.collection_name,
                 embedding_function=self.embedding_function,
-                metadata={"hnsw:space": "cosine"}
+                metadata=collection_metadata
             )
 
-            logger.info(f"ChromaDB初始化成功，集合: {self.collection_name}")
+            logger.info(f"ChromaDB初始化成功，集合: {self.collection_name}，嵌入类型: {embedding_type}")
 
         except Exception as e:
             logger.error(f"ChromaDB初始化失败: {e}")
@@ -434,17 +461,53 @@ class RAGKnowledgeBase:
         return await self.build_knowledge_base(notebook_id, **kwargs)
 
 
-def create_rag_knowledge_base(persist_directory: Optional[str] = None) -> RAGKnowledgeBase:
+def create_rag_knowledge_base(persist_directory: Optional[str] = None,
+                            use_openai_embedding: bool = False,
+                            **kwargs) -> RAGKnowledgeBase:
     """
     创建RAG知识库的便捷函数
 
     Args:
         persist_directory: 持久化目录
+        use_openai_embedding: 是否使用OpenAI嵌入模型
+        **kwargs: 其他参数
 
     Returns:
         RAGKnowledgeBase: 知识库实例
     """
-    return RAGKnowledgeBase(persist_directory)
+    return RAGKnowledgeBase(
+        persist_directory=persist_directory,
+        use_openai_embedding=use_openai_embedding,
+        **kwargs
+    )
+
+
+def create_rag_knowledge_base_with_openai(persist_directory: Optional[str] = None,
+                                        embedding_model: str = "text-embedding-3-small",
+                                        api_key: Optional[str] = None,
+                                        api_base: Optional[str] = None,
+                                        **kwargs) -> RAGKnowledgeBase:
+    """
+    创建使用OpenAI嵌入模型的RAG知识库便捷函数
+
+    Args:
+        persist_directory: 持久化目录
+        embedding_model: OpenAI嵌入模型名称
+        api_key: OpenAI API Key
+        api_base: OpenAI API Base URL
+        **kwargs: 其他参数
+
+    Returns:
+        RAGKnowledgeBase: 知识库实例
+    """
+    return RAGKnowledgeBase(
+        persist_directory=persist_directory,
+        embedding_model=embedding_model,
+        use_openai_embedding=True,
+        openai_api_key=api_key,
+        openai_api_base=api_base,
+        **kwargs
+    )
 
 
 async def main():
