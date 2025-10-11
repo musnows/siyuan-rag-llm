@@ -3,3 +3,5 @@
 思源笔记公共API文档： @API.md，已经实现了类封装：@utils/siyuan_api.py
 
 请根据用户需要，补充能力，如果是工具方法，放入utils目录中，保证封装性和可扩展性。
+
+本python项目使用uv管理，所有代码运行都用`uv run python`来执行。
