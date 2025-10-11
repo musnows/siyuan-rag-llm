@@ -12,7 +12,7 @@ from pathlib import Path
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # 添加utils目录到Python路径
-sys.path.append(str(Path(__file__).parent / "utils"))
+sys.path.append(str(Path(__file__).parent.parent / "utils"))
 
 from utils.siyuan.siyuan_content import create_content_extractor
 from utils.rag.rag_knowledge_base import create_rag_knowledge_base
