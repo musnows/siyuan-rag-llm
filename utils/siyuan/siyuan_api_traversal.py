@@ -98,6 +98,7 @@ class SiYuanAPITraversal:
                 if note.children:
                     collect_ids(note.children)
 
+        logger.info(f"开始进行笔记本 {notebook_id} 的笔记遍历获取...")
         collect_ids(root_notes)
         return all_ids
 
