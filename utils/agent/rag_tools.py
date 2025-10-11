@@ -277,6 +277,29 @@ class RAGToolKit:
     async def _rag_multi_query(self, **kwargs) -> Dict[str, Any]:
         """执行多查询"""
         try:
+            # 处理queries参数格式，兼容Agent可能传递的错误格式
+            if "queries" in kwargs:
+                queries = kwargs["queries"]
+                # 如果queries是字典列表，转换为字符串列表
+                if isinstance(queries, list) and queries and isinstance(queries[0], dict):
+                    # 尝试多种可能的键名
+                    converted_queries = []
+                    for item in queries:
+                        if isinstance(item, dict):
+                            # 尝试不同的键名
+                            query_text = (
+                                item.get("query") or
+                                item.get("text") or
+                                item.get("content") or
+                                str(item.get("value", ""))
+                            )
+                            if query_text:
+                                converted_queries.append(query_text)
+
+                    if converted_queries:
+                        kwargs["queries"] = converted_queries
+                        logger.info(f"转换queries参数格式: {len(converted_queries)} 个查询")
+
             # 验证参数
             tool_input = RAGMultiQueryTool(**kwargs)
 

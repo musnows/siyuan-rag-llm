@@ -395,7 +395,7 @@ class RAGKnowledgeBase:
         try:
             results = self.collection.get(
                 where={"note_id": note_id},
-                n_results=max_chunks
+                include=["documents", "metadatas"]
             )
 
             documents = []
@@ -417,7 +417,8 @@ class RAGKnowledgeBase:
 
             # 按chunk_index排序
             documents.sort(key=lambda x: x.metadata.get("chunk_index", 0))
-            return documents
+            # 限制最大块数量
+            return documents[:max_chunks]
 
         except Exception as e:
             logger.error(f"获取笔记上下文失败: {e}")
