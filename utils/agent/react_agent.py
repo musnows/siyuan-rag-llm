@@ -68,7 +68,7 @@ class ReActAgent:
 
     def __init__(self,
                  knowledge_base: RAGKnowledgeBase,
-                 model: str = "gpt-3.5-turbo",
+                 model: str = None,
                  max_steps: int = 10,
                  max_tool_calls: int = 5,
                  temperature: float = 0.1,
@@ -85,7 +85,7 @@ class ReActAgent:
             system_prompt: 系统提示词
         """
         self.knowledge_base = knowledge_base
-        self.model = model
+        self.model = model or os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
         self.max_steps = max_steps
         self.max_tool_calls = max_tool_calls
         self.temperature = temperature
@@ -449,7 +449,7 @@ class ReActAgent:
 
 
 def create_react_agent(knowledge_base: RAGKnowledgeBase,
-                      model: str = "gpt-3.5-turbo",
+                      model: str = None,
                       **kwargs) -> ReActAgent:
     """
     创建ReAct Agent的便捷函数
