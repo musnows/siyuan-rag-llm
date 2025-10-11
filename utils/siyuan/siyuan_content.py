@@ -44,16 +44,17 @@ class SiYuanContentExtractor:
             use_api_traversal: 是否使用API遍历（默认True），False则使用本地文件遍历
         """
         self.use_api_traversal = use_api_traversal
+        self.api_client = SiYuanAPIClient.from_env()
 
         if use_api_traversal:
             # 使用API遍历（推荐方式）
             self.api_traversal = None  # 延迟初始化
-            self.api_client = SiYuanAPIClient.from_env()
+            # 为了兼容性，也创建 workspace 实例
+            self.workspace = SiYuanWorkspace(workspace_path)
             logger.info(f"初始化思源笔记内容提取器（使用API遍历）")
         else:
             # 使用本地文件遍历（兼容方式）
             self.workspace = SiYuanWorkspace(workspace_path)
-            self.api_client = SiYuanAPIClient.from_env()
             logger.info(f"初始化思源笔记内容提取器（使用本地文件遍历）")
 
     async def _ensure_api_traversal(self):
