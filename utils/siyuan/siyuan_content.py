@@ -12,6 +12,7 @@ from ..logger import get_logger
 from .siyuan_workspace import SiYuanWorkspace, NoteInfo
 from .siyuan_api import SiYuanAPIClient
 from .siyuan_api_traversal import SiYuanAPITraversal
+from ..content_filter import should_skip_empty_notes, filter_empty_content, clean_content
 
 logger = get_logger(__name__)
 
@@ -73,6 +74,11 @@ class SiYuanContentExtractor:
         """
         logger.info(f"开始获取笔记本 {notebook_id} 的所有笔记内容")
 
+        # 检查是否需要跳过空白笔记
+        skip_empty = should_skip_empty_notes()
+        if skip_empty:
+            logger.info("已启用空白笔记过滤功能")
+
         # 确保API遍历器已初始化
         await self._ensure_api_traversal()
 
@@ -96,12 +102,26 @@ class SiYuanContentExtractor:
 
         # 获取每个笔记的内容
         note_contents = []
+        skipped_count = 0
+
         async with self.api_client:
             for note in all_notes:
                 try:
                     # 使用API获取markdown内容
                     md_data = await self.api_client.export_md_content(note.id)
-                    content = md_data.get("content", "")
+                    raw_content = md_data.get("content", "")
+
+                    # 应用空白内容过滤
+                    if skip_empty:
+                        filtered_content = filter_empty_content(raw_content)
+                        if filtered_content is None:
+                            skipped_count += 1
+                            logger.debug(f"跳过空白笔记: {note.id} - {note.title}")
+                            continue
+                        content = filtered_content
+                    else:
+                        # 不跳过空白笔记，但仍清理front-matter
+                        content = clean_content(raw_content)
 
                     note_content = NoteContent(
                         id=note.id,
@@ -116,7 +136,11 @@ class SiYuanContentExtractor:
                 except Exception as e:
                     logger.warning(f"无法获取笔记内容: {note.id}, 错误: {e}")
 
-        logger.info(f"成功获取 {len(note_contents)} 个笔记的内容")
+        if skip_empty:
+            logger.info(f"成功获取 {len(note_contents)} 个笔记的内容，跳过了 {skipped_count} 个空白笔记")
+        else:
+            logger.info(f"成功获取 {len(note_contents)} 个笔记的内容")
+
         return note_contents
 
     async def iterate_note_contents(self, notebook_id: str, include_children: bool = True) -> AsyncIterator[NoteContent]:
@@ -131,6 +155,11 @@ class SiYuanContentExtractor:
             NoteContent: 笔记内容
         """
         logger.info(f"开始迭代获取笔记本 {notebook_id} 的笔记内容")
+
+        # 检查是否需要跳过空白笔记
+        skip_empty = should_skip_empty_notes()
+        if skip_empty:
+            logger.info("已启用空白笔记过滤功能")
 
         # 确保API遍历器已初始化
         await self._ensure_api_traversal()
@@ -153,13 +182,27 @@ class SiYuanContentExtractor:
                 root_notes = self.workspace.get_all_notes_from_notebook(notebook_id)
                 all_notes = root_notes
 
+        skipped_count = 0
+
         # 逐个获取笔记内容
         async with self.api_client:
             for note in all_notes:
                 try:
                     # 使用API获取markdown内容
                     md_data = await self.api_client.export_md_content(note.id)
-                    content = md_data.get("content", "")
+                    raw_content = md_data.get("content", "")
+
+                    # 应用空白内容过滤
+                    if skip_empty:
+                        filtered_content = filter_empty_content(raw_content)
+                        if filtered_content is None:
+                            skipped_count += 1
+                            logger.debug(f"跳过空白笔记: {note.id} - {note.title}")
+                            continue
+                        content = filtered_content
+                    else:
+                        # 不跳过空白笔记，但仍清理front-matter
+                        content = clean_content(raw_content)
 
                     note_content = NoteContent(
                         id=note.id,
@@ -172,6 +215,9 @@ class SiYuanContentExtractor:
                     yield note_content
                 except Exception as e:
                     logger.warning(f"无法获取笔记内容: {note.id}, 错误: {e}")
+
+        if skip_empty and skipped_count > 0:
+            logger.info(f"迭代完成，跳过了 {skipped_count} 个空白笔记")
 
     async def get_note_contents_dict(self, notebook_id: str, include_children: bool = True) -> Dict[str, NoteContent]:
         """
@@ -214,6 +260,9 @@ class SiYuanContentExtractor:
         """
         logger.info(f"获取笔记内容: {note_id}")
 
+        # 检查是否需要跳过空白笔记
+        skip_empty = should_skip_empty_notes()
+
         # 确保API遍历器已初始化
         await self._ensure_api_traversal()
 
@@ -238,7 +287,18 @@ class SiYuanContentExtractor:
         try:
             async with self.api_client:
                 md_data = await self.api_client.export_md_content(note_id)
-                content = md_data.get("content", "")
+                raw_content = md_data.get("content", "")
+
+                # 应用空白内容过滤
+                if skip_empty:
+                    filtered_content = filter_empty_content(raw_content)
+                    if filtered_content is None:
+                        logger.info(f"笔记内容为空白，跳过: {note_id} - {note_info.title}")
+                        return None
+                    content = filtered_content
+                else:
+                    # 不跳过空白笔记，但仍清理front-matter
+                    content = clean_content(raw_content)
 
                 return NoteContent(
                     id=note_id,
