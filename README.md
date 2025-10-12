@@ -89,7 +89,7 @@ Embedding模型选择：
 ### 2. 启动交互式问答系统
 
 ```bash
-uv run python main.py
+uv run python cli.py
 ```
 
 系统会自动：
@@ -102,7 +102,16 @@ uv run python main.py
 ### 3. 命令行使用
 
 ```bash
-# 构建知识库
+# 交互式问答系统（推荐）
+uv run python cli.py
+
+# 直接构建指定笔记本
+uv run python cli.py --notebook-id YOUR_NOTEBOOK_ID
+
+# 显示笔记本列表
+uv run python cli.py --list-notebooks
+
+# 构建知识库（传统方式）
 uv run python build_knowledge_base.py
 
 # 指定特定笔记本构建
@@ -147,6 +156,11 @@ uv run python build_knowledge_base.py --model text-embedding-3-small
 - 📊 **统计监控**: 实时知识库状态监控
 - 🔄 **动态更新**: 支持知识库增量更新
 - 🧪 **测试查询**: 内置测试功能验证系统状态
+- 🚀 **CLI增强功能**:
+  - 命令行参数支持 (`--notebook-id`, `--list-notebooks`)
+  - 直接构建指定笔记本
+  - 笔记本列表显示
+  - 增强的错误处理和状态反馈
 
 ### 交互式命令
 
@@ -167,35 +181,38 @@ uv run python build_knowledge_base.py --model text-embedding-3-small
 
 ```
 siyuan-rag-llm/
-├── main.py                           # 交互式系统入口
-├── build_knowledge_base.py           # 知识库构建工具
-├── pyproject.toml                    # 项目配置和依赖
-├── .env.example                      # 环境变量示例
-├── README.md                         # 项目文档
-├── SIYUAN_API.md                     # 思源笔记API文档
-├── utils/                            # 工具模块
-│   ├── siyuan/                       # 思源笔记相关
-│   │   ├── siyuan_api.py            # API客户端
-│   │   ├── siyuan_workspace.py      # 工作空间管理
-│   │   └── siyuan_content.py        # 内容提取
-│   ├── rag/                          # RAG知识库
-│   │   ├── rag_knowledge_base.py    # 知识库管理
-│   │   ├── rag_query.py             # 查询引擎
+├── cli.py                           # 交互式CLI系统入口（推荐）
+├── build_knowledge_base.py          # 知识库构建工具
+├── pyproject.toml                   # 项目配置和依赖
+├── .env.example                     # 环境变量示例
+├── README.md                        # 项目文档
+├── SIYUAN_API.md                    # 思源笔记API文档
+├── utils/                           # 工具模块
+│   ├── siyuan/                      # 思源笔记相关
+│   │   ├── siyuan_api.py           # API客户端
+│   │   ├── siyuan_workspace.py     # 工作空间管理
+│   │   └── siyuan_content.py       # 内容提取
+│   ├── rag/                         # RAG知识库
+│   │   ├── rag_knowledge_base.py   # 知识库管理
+│   │   ├── rag_query.py            # 查询引擎
 │   │   └── __init__.py
-│   ├── agent/                        # 智能Agent
-│   │   ├── rag_agent.py             # RAG对话助手
-│   │   ├── rag_tools.py             # 工具函数
-│   │   ├── react_agent.py           # ReAct代理
+│   ├── agent/                       # 智能Agent
+│   │   ├── rag_agent.py            # RAG对话助手
+│   │   ├── rag_tools.py            # 工具函数
+│   │   ├── react_agent.py          # ReAct代理
 │   │   └── __init__.py
-│   ├── embeddings/                   # 嵌入模型
-│   │   └── openai_embedding.py      # OpenAI嵌入
-│   ├── content_filter.py             # 内容过滤
-│   └── logger.py                     # 日志工具
-├── test/                             # 测试文件
-│   ├── test_rag_system.py           # RAG系统测试
-│   └── test_rag_query.py            # 查询功能测试
-└── data/                            # 数据目录
-    └── rag_db/                      # 向量数据库存储
+│   ├── embeddings/                  # 嵌入模型
+│   │   └── openai_embedding.py     # OpenAI嵌入
+│   ├── content_filter.py            # 内容过滤
+│   └── logger.py                    # 日志工具
+├── test/                            # 测试文件
+│   ├── test_react_agent.py         # ReAct Agent测试
+│   ├── test_rag_system.py          # RAG系统测试
+│   ├── test_rag_query.py           # 查询功能测试
+│   ├── siyuan_api_examples.py      # API使用示例
+│   └── docs/                        # 测试文档
+└── data/                           # 数据目录
+    └── rag_db/                     # 向量数据库存储
 ```
 
 
