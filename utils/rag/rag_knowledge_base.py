@@ -69,9 +69,8 @@ class RAGKnowledgeBase:
             openai_api_key: OpenAI API Key
             openai_api_base: OpenAI API Base URL
         """
-        self.persist_directory = persist_directory or os.path.join(
-            os.getcwd(), "data", "rag_db"
-        )
+        # 使用固定的持久化目录
+        self.persist_directory = persist_directory or "./data/rag_db"
         self.embedding_model = embedding_model
         self.collection_name = collection_name
         self.use_openai_embedding = use_openai_embedding

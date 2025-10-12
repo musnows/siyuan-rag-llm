@@ -33,7 +33,7 @@ async def check_siyuan_connection():
     """
     try:
         # 创建知识库实例来检查连接
-        rag_kb = create_knowledge_base("connection_test")
+        rag_kb = create_knowledge_base()
 
         # 尝试获取笔记本列表来验证连接
         notebooks = rag_kb.content_extractor.workspace.list_notebooks()
@@ -63,7 +63,7 @@ def create_knowledge_base(persist_directory_suffix: str = ""):
     根据环境变量创建知识库（不自动构建）
 
     Args:
-        persist_directory_suffix: 持久化目录后缀
+        persist_directory_suffix: 持久化目录后缀（已弃用，为保持兼容性保留）
 
     Returns:
         RAGKnowledgeBase: 知识库实例
@@ -80,12 +80,13 @@ def create_knowledge_base(persist_directory_suffix: str = ""):
         "text-embedding-3-large"
     ]
 
+    # 使用固定的持久化目录
+    persist_dir = "./data/rag_db"
+
     if is_openai_embedding:
         # 使用OpenAI嵌入模型
         if not api_key:
             raise ValueError("使用OpenAI嵌入模型需要设置OPENAI_API_KEY环境变量")
-
-        persist_dir = f"./data/rag_db_openai_{persist_directory_suffix}" if persist_directory_suffix else "./data/rag_db_openai"
 
         logger.info(f"创建OpenAI嵌入知识库，embedding模型: {embedding_model}")
         return create_rag_knowledge_base_with_openai(
@@ -93,18 +94,16 @@ def create_knowledge_base(persist_directory_suffix: str = ""):
             embedding_model=embedding_model,
             api_key=api_key,
             api_base=api_base,
-            collection_name=f"siyuan_notes_openai_{persist_directory_suffix}" if persist_directory_suffix else "siyuan_notes_openai"
+            collection_name="siyuan_notes"
         )
     else:
         # 使用本地HuggingFace嵌入模型
-        persist_dir = f"./data/rag_db_local_{persist_directory_suffix}" if persist_directory_suffix else "./data/rag_db_local"
-
         logger.info(f"创建本地嵌入知识库，embedding模型: {embedding_model}")
         return create_rag_knowledge_base(
             persist_directory=persist_dir,
             embedding_model=embedding_model,
             use_openai_embedding=False,
-            collection_name=f"siyuan_notes_local_{persist_directory_suffix}" if persist_directory_suffix else "siyuan_notes_local"
+            collection_name="siyuan_notes"
         )
 
 
@@ -349,7 +348,7 @@ async def interactive_cli(notebook_id: str = None):
 
     # 创建知识库实例
     print("🔧 正在创建知识库实例...")
-    rag_kb = create_knowledge_base("interactive_cli")
+    rag_kb = create_knowledge_base()
 
     # 检查现有数据并询问用户
     need_rebuild = await check_existing_data_and_prompt(rag_kb)
@@ -455,7 +454,7 @@ async def list_notebooks():
     print("=" * 60)
 
     try:
-        rag_kb = create_knowledge_base("list_notebooks")
+        rag_kb = create_knowledge_base()
         notebooks = rag_kb.content_extractor.workspace.list_notebooks()
 
         if not notebooks:
