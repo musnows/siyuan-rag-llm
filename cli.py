@@ -178,6 +178,12 @@ async def select_notebook_and_build(rag_kb) -> bool:
                 print(f"\n📖 开始构建笔记本: {nb_name} (ID: {nb_id})")
 
                 try:
+                    # 首先打开笔记本
+                    print(f"🔓 正在打开笔记本: {nb_name}")
+                    async with rag_kb.content_extractor.api_client:
+                        await rag_kb.content_extractor.api_client.open_notebook(nb_id)
+                    print(f"✅ 笔记本 {nb_name} 已打开")
+
                     doc_count = await rag_kb.build_knowledge_base(
                         notebook_id=nb_id,
                         include_children=True,
@@ -310,6 +316,12 @@ async def build_notebook_directly(rag_kb, notebook_id: str) -> bool:
 
         nb_id, nb_name = target_notebook
         print(f"📖 开始构建笔记本: {nb_name} (ID: {nb_id})")
+
+        # 首先打开笔记本
+        print(f"🔓 正在打开笔记本: {nb_name}")
+        async with rag_kb.content_extractor.api_client:
+            await rag_kb.content_extractor.api_client.open_notebook(nb_id)
+        print(f"✅ 笔记本 {nb_name} 已打开")
 
         # 使用默认参数构建
         doc_count = await rag_kb.build_knowledge_base(
