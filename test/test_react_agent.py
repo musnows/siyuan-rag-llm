@@ -11,7 +11,7 @@ import json
 from typing import List, Dict, Any
 
 # 添加项目根目录到路径
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.rag.rag_knowledge_base import create_rag_knowledge_base, create_rag_knowledge_base_with_openai
 from utils.agent.react_agent import create_react_agent
