@@ -13,7 +13,7 @@ from datetime import datetime
 # 加载环境变量
 from dotenv import load_dotenv
 load_dotenv(override=True)
-
+print(f"[LOG] 已加载.env环境变量，当前日志级别: {os.getenv('LOG_LEVEL')}")
 
 class SiYuanLogger:
     """思源笔记项目专用日志工具"""
