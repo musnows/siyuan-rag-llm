@@ -128,7 +128,7 @@ class ReActAgent:
 - 保持逻辑清晰，推理过程透明
 
 回答格式：
-1. 先给出最终答案
+1. 先给出最终答案，必须以“最终答案”开头
 2. 然后简要说明推理过程
 3. 列出主要信息来源
 
@@ -166,6 +166,7 @@ class ReActAgent:
             "content": f"用户问题: {question}\n\n请使用ReAct模式逐步分析并回答这个问题。"
         })
 
+        final_answer = ""
         for step in range(self.max_steps):
             try:
                 # 生成下一步行动
@@ -260,6 +261,7 @@ class ReActAgent:
                 # 检查是否给出最终答案
                 if message.content and self._is_final_answer(message.content):
                     logger.info("检测到最终答案，结束推理")
+                    final_answer = message.content
                     break
 
             except Exception as e:
@@ -269,10 +271,12 @@ class ReActAgent:
                     content=f"执行过程中出现错误: {str(e)}，将基于已有信息给出答案。"
                 )
                 reasoning_steps.append(error_step)
+                final_answer = f"抱歉，在推理过程中出现错误: {str(e)}。基于已有信息给出答案。"
                 break
 
-        # 生成最终答案
-        final_answer = await self._generate_final_answer(conversation, reasoning_steps)
+        # 如果没有检测到最终答案，则生成一个
+        if not final_answer:
+            final_answer = await self._generate_final_answer(conversation)
 
         # 提取使用的来源
         sources_used = self._extract_sources(reasoning_steps)
@@ -302,7 +306,6 @@ class ReActAgent:
         if not result.get("success", False):
             return f"工具调用失败: {result.get('error', '未知错误')}"
 
-        success_result = result.get("success", False)
 
         if "results" in result:
             # 搜索结果
@@ -349,7 +352,7 @@ class ReActAgent:
                 return True
         return False
 
-    async def _generate_final_answer(self, conversation: List[Dict], reasoning_steps: List[ReActStep]) -> str:
+    async def _generate_final_answer(self, conversation: List[Dict]) -> str:
         """生成最终答案"""
         try:
             # 添加最终答案生成提示
