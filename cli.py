@@ -156,17 +156,10 @@ async def select_notebook_and_build(rag_kb) -> bool:
                 print("❌ 没有选择有效的笔记本")
                 return False
 
-            # 询问分块参数
-            print("\n📋 构建参数设置 (直接回车使用默认值):")
-            chunk_size_input = input("文档分块大小 (默认1000): ").strip()
-            chunk_overlap_input = input("分块重叠大小 (默认200): ").strip()
-            batch_size_input = input("批处理大小 (默认10): ").strip()
-
-            chunk_size = int(chunk_size_input) if chunk_size_input.isdigit() else 1000
-            chunk_overlap = int(chunk_overlap_input) if chunk_overlap_input.isdigit() else 200
-            batch_size = int(batch_size_input) if batch_size_input.isdigit() else 10
-
-            print(f"\n🔧 将使用参数: 分块大小={chunk_size}, 重叠={chunk_overlap}, 批处理={batch_size}")
+            # 获取配置参数
+            chunk_size = int(os.getenv("RAG_CHUNK_SIZE", "1000"))
+            chunk_overlap = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
+            batch_size = int(os.getenv("RAG_BATCH_SIZE", "10"))
 
             # 构建选定的笔记本
             total_docs = 0
@@ -224,15 +217,15 @@ async def select_notebook_and_build(rag_kb) -> bool:
         return False
 
 
-async def check_existing_data_and_prompt(rag_kb) -> bool:
+async def check_existing_data_and_prompt(rag_kb):
     """
-    检查现有数据并提示用户是否重建
+    检查现有数据并提示用户操作选择
 
     Args:
         rag_kb: 知识库实例
 
     Returns:
-        bool: 是否需要重新构建
+        str: 操作类型 ("rebuild", "incremental", "use_existing")
     """
     try:
         # 首先检查思源笔记连接
@@ -256,7 +249,7 @@ async def check_existing_data_and_prompt(rag_kb) -> bool:
 
         if total_existing == 0:
             print("🆕 未发现现有知识库数据，需要创建新的知识库")
-            return True
+            return "rebuild"
 
         # 显示现有数据状态
         print(f"\n📊 发现现有知识库数据:")
@@ -265,26 +258,150 @@ async def check_existing_data_and_prompt(rag_kb) -> bool:
         for nb_id, nb_name, count in notebooks_with_data:
             print(f"  - {nb_name} (ID: {nb_id}): {count} 个文档块")
 
-        # 询问用户是否重建
-        print("\n是否要重新构建知识库？")
+        # 询问用户是否重建或增量更新
+        print("\n请选择知识库操作方式？")
         print("1. 重新构建 (删除现有数据，重新创建)")
-        print("2. 使用现有数据 (直接进入ReAct Agent模式)")
+        print("2. 增量更新 (只更新有修改的文档)")
+        print("3. 使用现有数据 (直接进入ReAct Agent模式)")
 
         while True:
-            choice = input("请选择 (1/2): ").strip()
+            choice = input("请选择 (1/2/3): ").strip()
             if choice == "1":
                 print("🔄 选择重新构建知识库")
-                return True
+                return "rebuild"
             elif choice == "2":
+                print("🔄 选择增量更新知识库")
+                return "incremental"
+            elif choice == "3":
                 print("✅ 使用现有知识库数据")
-                return False
+                return "use_existing"
             else:
-                print("❌ 无效选择，请输入 1 或 2")
+                print("❌ 无效选择，请输入 1、2 或 3")
 
     except Exception as e:
         print(f"❌ 检查现有数据失败: {e}")
         logger.error(f"检查现有数据失败: {e}")
-        return True  # 出错时默认重建
+        return "rebuild"  # 出错时默认重建
+
+
+async def select_notebook_for_incremental_update(rag_kb) -> bool:
+    """
+    让用户选择笔记本进行增量更新
+
+    Args:
+        rag_kb: 知识库实例
+
+    Returns:
+        bool: 是否成功进行增量更新
+    """
+    try:
+        # 首先检查思源笔记连接
+        print("🔍 检查思源笔记连接...")
+        await check_siyuan_connection()
+
+        # 获取笔记本列表
+        notebooks = rag_kb.content_extractor.workspace.list_notebooks()
+        if not notebooks:
+            print("❌ 没有找到思源笔记笔记本")
+            return False
+
+        # 检查哪些笔记本有现有数据
+        notebooks_with_data = []
+        for nb_id, nb_name in notebooks:
+            existing_count = await rag_kb.get_notebook_document_count(nb_id)
+            if existing_count > 0:
+                notebooks_with_data.append((nb_id, nb_name, existing_count))
+
+        if not notebooks_with_data:
+            print("❌ 没有找到已构建的笔记本，无法进行增量更新")
+            print("   请先使用完整构建模式创建知识库")
+            return False
+
+        print(f"\n📚 找到 {len(notebooks_with_data)} 个已构建的笔记本:")
+        for i, (nb_id, nb_name, count) in enumerate(notebooks_with_data, 1):
+            print(f"  {i}. {nb_name} (ID: {nb_id}) - {count} 个文档块")
+
+        print("\n请选择要进行增量更新的笔记本:")
+        try:
+            choice = input("输入笔记本编号 (多个用逗号分隔，如: 1,2,3)，直接回车选择所有笔记本: ").strip()
+            if not choice:
+                print("📋 选择所有笔记本进行增量更新")
+                selected_notebooks = notebooks_with_data  # 选择所有笔记本
+            else:
+                # 解析用户选择
+                selected_indices = [int(x.strip()) - 1 for x in choice.split(",")]
+                selected_notebooks = []
+
+                for idx in selected_indices:
+                    if 0 <= idx < len(notebooks_with_data):
+                        selected_notebooks.append(notebooks_with_data[idx])
+                    else:
+                        print(f"⚠️ 编号 {idx + 1} 无效，跳过")
+
+            if not selected_notebooks:
+                print("❌ 没有选择有效的笔记本")
+                return False
+
+            # 获取配置参数
+            chunk_size = int(os.getenv("RAG_CHUNK_SIZE", "1000"))
+            chunk_overlap = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
+            batch_size = int(os.getenv("RAG_BATCH_SIZE", "10"))
+
+            # 执行增量更新
+            total_updated = 0
+            success_count = 0
+            failed_count = 0
+
+            for nb_id, nb_name, existing_count in selected_notebooks:
+                print(f"\n📖 开始增量更新笔记本: {nb_name} (ID: {nb_id})")
+                print(f"   现有文档块: {existing_count}")
+
+                try:
+                    # 首先打开笔记本
+                    print(f"🔓 正在打开笔记本: {nb_name}")
+                    async with rag_kb.content_extractor.api_client:
+                        await rag_kb.content_extractor.api_client.open_notebook(nb_id)
+                    print(f"✅ 笔记本 {nb_name} 已打开")
+
+                    # 执行增量更新
+                    updated_count = await rag_kb.build_knowledge_base_incremental(
+                        notebook_id=nb_id,
+                        include_children=True,
+                        chunk_size=chunk_size,
+                        chunk_overlap=chunk_overlap,
+                        batch_size=batch_size
+                    )
+
+                    total_updated += updated_count
+                    success_count += 1
+                    print(f"✅ 笔记本 '{nb_name}' 增量更新完成，更新了 {updated_count} 个文档块")
+
+                except Exception as e:
+                    failed_count += 1
+                    print(f"❌ 增量更新笔记本 '{nb_name}' 失败: {e}")
+                    logger.error(f"增量更新笔记本失败: {e}")
+
+            # 显示更新结果总结
+            if success_count > 0 and failed_count == 0:
+                print(f"\n🎉 增量更新完成！总计更新 {total_updated} 个文档块")
+            elif success_count > 0 and failed_count > 0:
+                print(f"\n⚠️ 增量更新部分完成！成功 {success_count} 个笔记本，失败 {failed_count} 个笔记本，总计更新 {total_updated} 个文档块")
+            else:
+                print(f"\n❌ 增量更新失败！所有 {failed_count} 个笔记本更新失败")
+
+            return success_count > 0
+
+        except ValueError:
+            print("❌ 输入格式错误，请输入数字编号")
+            return False
+        except KeyboardInterrupt:
+            print("\n❌ 用户取消操作")
+            return False
+
+    except Exception as e:
+        print(f"❌ 选择笔记本失败: {e}")
+        logger.error(f"选择笔记本失败: {e}")
+        return False
 
 
 async def build_notebook_directly(rag_kb, notebook_id: str) -> bool:
@@ -341,7 +458,7 @@ async def build_notebook_directly(rag_kb, notebook_id: str) -> bool:
         return False
 
 
-async def interactive_cli(notebook_id: str = None):
+async def interactive_cli(notebook_id: str = None, incremental_mode: bool = False):
     """交互式CLI主函数"""
     print("\n=== 思源笔记RAG知识库交互式CLI ===")
     print("输入问题来测试ReAct Agent，输入 'quit' 退出")
@@ -350,25 +467,39 @@ async def interactive_cli(notebook_id: str = None):
     print("🔧 正在创建知识库实例...")
     rag_kb = create_knowledge_base()
 
-    # 检查现有数据并询问用户
-    need_rebuild = await check_existing_data_and_prompt(rag_kb)
-
-    if need_rebuild:
-        if notebook_id:
-            # 直接构建指定笔记本
-            print(f"🔧 直接构建笔记本 ID: {notebook_id}")
-            success = await build_notebook_directly(rag_kb, notebook_id)
-            if not success:
-                print("❌ 知识库构建失败，退出CLI")
-                return
-        else:
-            # 需要重新构建，让用户选择笔记本
-            success = await select_notebook_and_build(rag_kb)
-            if not success:
-                print("❌ 知识库构建失败，退出CLI")
-                return
+    # 如果是增量更新模式，直接执行增量更新
+    if incremental_mode:
+        print("🔄 执行增量更新模式")
+        success = await select_notebook_for_incremental_update(rag_kb)
+        if not success:
+            print("❌ 增量更新失败，退出CLI")
+            return
     else:
-        print("✅ 使用现有知识库数据")
+        # 检查现有数据并询问用户
+        action = await check_existing_data_and_prompt(rag_kb)
+
+        if action == "rebuild":
+            if notebook_id:
+                # 直接构建指定笔记本
+                print(f"🔧 直接构建笔记本 ID: {notebook_id}")
+                success = await build_notebook_directly(rag_kb, notebook_id)
+                if not success:
+                    print("❌ 知识库构建失败，退出CLI")
+                    return
+            else:
+                # 需要重新构建，让用户选择笔记本
+                success = await select_notebook_and_build(rag_kb)
+                if not success:
+                    print("❌ 知识库构建失败，退出CLI")
+                    return
+        elif action == "incremental":
+            # 执行增量更新
+            success = await select_notebook_for_incremental_update(rag_kb)
+            if not success:
+                print("❌ 增量更新失败，退出CLI")
+                return
+        else:  # use_existing
+            print("✅ 使用现有知识库数据")
 
     # 获取统计信息
     stats = rag_kb.get_collection_stats()
@@ -378,34 +509,48 @@ async def interactive_cli(notebook_id: str = None):
 
     # 创建Agent
     agent = create_react_agent(rag_kb, max_tool_calls=5)
-    print("✅ ReAct Agent创建成功，可以开始提问了！")
+    print("[SUCCESS] ReAct Agent创建成功，可以开始提问了！")
 
     while True:
         try:
-            question = input("\n请输入问题: ").strip()
+            print("\n" + "="*80)
+            print("[RAG] 请输入您的问题 (输入 'quit' 或 '退出' 结束对话):")
+            print("="*80)
+            question = input("[?] ").strip()
 
             if question.lower() in ['quit', 'exit', '退出']:
+                print("\n[SYS] 感谢使用思源笔记RAG问答系统，再见！")
                 break
 
             if not question:
+                print("[WARN] 请输入有效的问题")
                 continue
 
-            print(f"\n正在处理: {question}")
-            print("-" * 50)
+            print("\n[PROCESSING] 正在处理您的问题...")
+            print(f"[QUESTION] {question}")
+            print("-" * 80)
 
             response = await agent.query(question)
 
-            print(f"\n答案:\n{response.answer}")
-            print(f"\n统计信息:")
-            print(f"  - 工具调用次数: {response.tool_calls_made}")
-            print(f"  - 推理步数: {len(response.reasoning)}")
-            print(f"  - 置信度: {response.final_confidence}")
-            print(f"  - 使用来源数: {len(response.sources_used)}")
+            print("\n" + "="*80)
+            print("[ANSWER] 答案")
+            print("="*80)
+            print(f"{response.answer}")
+
+            print("\n[STATS] 处理统计:")
+            print(f"  [TOOLS] 工具调用次数: {response.tool_calls_made}")
+            print(f"  [REASON] 推理步数: {len(response.reasoning)}")
+            print(f"  [CONFIDENCE] 置信度: {response.final_confidence:.2%}")
+            print(f"  [SOURCES] 使用来源数: {len(response.sources_used)}")
 
             if response.sources_used:
-                print(f"\n主要来源:")
-                for source in response.sources_used[:5]:
-                    print(f"  - {source['title']} (相似度: {source.get('similarity', 0):.3f})")
+                print("\n[REFERENCES] 主要参考来源:")
+                for i, source in enumerate(response.sources_used[:5], 1):
+                    similarity = source.get('similarity', 0)
+                    print(f"  {i}. {source['title']}")
+                    print(f"     [SIMILARITY] {similarity:.3f}")
+
+            print("\n" + "="*80)
 
         except KeyboardInterrupt:
             print("\n\n用户中断，退出CLI")
@@ -428,6 +573,9 @@ def parse_args():
   # 直接构建指定笔记本
   python cli.py --notebook-id 20230602143452-yt2rrgb
 
+  # 增量更新模式
+  python cli.py --incremental
+
   # 显示笔记本列表
   python cli.py --list-notebooks
         """
@@ -443,6 +591,12 @@ def parse_args():
         "--list-notebooks",
         action="store_true",
         help="显示所有可用的笔记本列表"
+    )
+
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        help="对已有知识库进行增量更新"
     )
 
     return parser.parse_args()
@@ -532,7 +686,7 @@ async def main():
         return
 
     # 启动交互式CLI
-    await interactive_cli(args.notebook_id)
+    await interactive_cli(args.notebook_id, args.incremental)
 
 
 if __name__ == "__main__":

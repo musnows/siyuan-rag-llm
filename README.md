@@ -89,7 +89,7 @@ Embedding模型选择：
 ### 2. 启动交互式问答系统
 
 ```bash
-uv run python cli.py
+uv run cli.py
 ```
 
 系统会自动：
@@ -103,25 +103,28 @@ uv run python cli.py
 
 ```bash
 # 交互式问答系统（推荐）
-uv run python cli.py
+uv run cli.py
 
 # 直接构建指定笔记本
-uv run python cli.py --notebook-id YOUR_NOTEBOOK_ID
+uv run cli.py --notebook-id YOUR_NOTEBOOK_ID
 
 # 显示笔记本列表
-uv run python cli.py --list-notebooks
+uv run cli.py --list-notebooks
 
 # 构建知识库（传统方式）
-uv run python build_knowledge_base.py
+uv run build_knowledge_base.py
 
 # 指定特定笔记本构建
-uv run python build_knowledge_base.py --notebook YOUR_NOTEBOOK_ID
+uv run build_knowledge_base.py --notebook YOUR_NOTEBOOK_ID
 
 # 强制重建现有知识库
-uv run python build_knowledge_base.py --force
+uv run build_knowledge_base.py --force
 
 # 使用特定embedding模型
-uv run python build_knowledge_base.py --model text-embedding-3-small
+uv run build_knowledge_base.py --model text-embedding-3-small
+
+# 增量更新（只会更新rag库中有数据的笔记本）
+uv run build_knowledge_base.py --incremental
 ```
 
 ## 系统架构
