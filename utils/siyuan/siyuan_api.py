@@ -359,6 +359,26 @@ class SiYuanAPIClient:
         response = await self._request("/api/attr/getBlockAttrs", {"id": block_id})
         return response.data
 
+    async def get_block_updated_time(self, block_id: str) -> Optional[int]:
+        """
+        获取块更新时间
+
+        Args:
+            block_id: 块ID
+
+        Returns:
+            Optional[int]: 更新时间戳，格式如20230601162812，如果获取失败返回None
+        """
+        try:
+            attrs = await self.get_block_attrs(block_id)
+            updated = attrs.get("updated")
+            if updated:
+                return int(updated)
+            return None
+        except Exception as e:
+            logger.error(f"获取块更新时间失败: {block_id}, 错误: {e}")
+            return None
+
     # ========== SQL 相关 API ==========
 
     async def query_sql(self, stmt: str) -> List[Dict[str, Any]]:

@@ -5,8 +5,10 @@ RAG知识库模块
 
 import os
 import asyncio
-from typing import Dict, List, Optional, Tuple, Any
+import sqlite3
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 # 使用共享日志器
@@ -133,6 +135,201 @@ class RAGKnowledgeBase:
             logger.error(f"ChromaDB初始化失败: {e}")
             raise
 
+    async def _notebook_has_rag_data(self, notebook_id: str) -> bool:
+        """
+        检查笔记本是否有RAG数据
+
+        Args:
+            notebook_id: 笔记本ID
+
+        Returns:
+            bool: 是否有RAG数据
+        """
+        try:
+            # 检查向量数据库中是否有该笔记本的文档
+            doc_count = await self.get_notebook_document_count(notebook_id)
+            if doc_count > 0:
+                logger.debug(f"笔记本 {notebook_id} 有 {doc_count} 个RAG文档块")
+                return True
+
+            logger.debug(f"笔记本 {notebook_id} 没有任何RAG数据")
+            return False
+
+        except Exception as e:
+            logger.error(f"检查笔记本RAG数据失败: {notebook_id}, 错误: {e}")
+            return False
+
+    async def _get_note_updated_time(self, note_id: str) -> Optional[int]:
+        """
+        获取笔记的更新时间
+
+        Args:
+            note_id: 笔记ID
+
+        Returns:
+            Optional[int]: 更新时间，格式如20230601162812
+        """
+        try:
+            async with self.content_extractor.api_client:
+                return await self.content_extractor.api_client.get_block_updated_time(note_id)
+        except Exception as e:
+            logger.error(f"获取笔记更新时间失败: {note_id}, 错误: {e}")
+            return None
+
+    def _get_note_rag_insert_time(self, note_id: str) -> Optional[int]:
+        """
+        从Chroma数据库获取笔记的RAG插入时间
+
+        Args:
+            note_id: 笔记ID
+
+        Returns:
+            Optional[int]: RAG插入时间的Unix时间戳，如果没有找到则返回None
+        """
+        try:
+            # 查找该笔记的所有文档块
+            results = self.collection.get(
+                where={"note_id": note_id},
+                include=["metadatas"]
+            )
+
+            if not results["ids"]:
+                return None
+
+            # 从Chroma的embeddings表获取插入时间
+            # 通过查询第一个文档块的ID来获取创建时间
+            first_doc_id = results["ids"][0]
+
+            # 直接查询Chroma的SQLite数据库
+            chroma_db_path = os.path.join(self.persist_directory, "chroma.sqlite3")
+            if os.path.exists(chroma_db_path):
+                with sqlite3.connect(chroma_db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT created_at FROM embeddings
+                        WHERE embedding_id = ?
+                        ORDER BY created_at ASC
+                        LIMIT 1
+                    """, (first_doc_id,))
+
+                    row = cursor.fetchone()
+                    if row:
+                        # 将时间字符串转换为Unix时间戳
+                        created_at_str = row[0]
+                        created_at = datetime.strptime(created_at_str, "%Y-%m-%d %H:%M:%S")
+                        return int(created_at.timestamp())
+
+            return None
+
+        except Exception as e:
+            logger.error(f"获取笔记RAG插入时间失败: {note_id}, 错误: {e}")
+            return None
+
+    async def _needs_update(self, note_id: str) -> bool:
+        """
+        判断笔记是否需要更新RAG
+
+        Args:
+            note_id: 笔记ID
+
+        Returns:
+            bool: 是否需要更新
+        """
+        try:
+            # 获取RAG插入时间（从Chroma数据库）
+            rag_insert_time = self._get_note_rag_insert_time(note_id)
+            if rag_insert_time is None:
+                # 没有RAG数据，需要处理
+                logger.debug(f"笔记 {note_id} 没有RAG数据，需要处理")
+                return True
+
+            # 获取当前笔记更新时间
+            current_updated_time = await self._get_note_updated_time(note_id)
+            if current_updated_time is None:
+                # 无法获取更新时间，跳过处理
+                logger.warning(f"无法获取笔记更新时间，跳过: {note_id}")
+                return False
+
+            # 将笔记更新时间转换为Unix时间戳进行比较
+            # 思源笔记的时间格式：20230601162812
+            try:
+                updated_datetime = datetime.strptime(str(current_updated_time), "%Y%m%d%H%M%S")
+                current_updated_timestamp = int(updated_datetime.timestamp())
+            except ValueError:
+                logger.error(f"笔记更新时间格式错误: {note_id}, 时间: {current_updated_time}")
+                return False
+
+            # 比较更新时间：如果笔记在RAG插入后被修改，则需要更新
+            if current_updated_timestamp > rag_insert_time:
+                logger.debug(f"笔记 {note_id} 已更新，需要重新处理RAG")
+                return True
+            else:
+                logger.debug(f"笔记 {note_id} 未更新，跳过RAG处理")
+                return False
+
+        except Exception as e:
+            logger.error(f"判断笔记是否需要更新失败: {note_id}, 错误: {e}")
+            return False
+
+    async def _get_notes_to_update(self, notebook_id: str, note_ids: List[str]) -> List[str]:
+        """
+        获取需要更新的笔记ID列表（只处理已经有RAG数据的笔记）
+
+        Args:
+            notebook_id: 笔记本ID
+            note_ids: 所有笔记ID列表
+
+        Returns:
+            List[str]: 需要更新的笔记ID列表
+        """
+        try:
+            # 首先获取所有已经有RAG数据的笔记ID
+            existing_rag_notes = set()
+            try:
+                results = self.collection.get(
+                    where={"notebook_id": notebook_id},
+                    include=["metadatas"]
+                )
+
+                if results["metadatas"]:
+                    for metadata in results["metadatas"]:
+                        existing_rag_notes.add(metadata["note_id"])
+
+                logger.info(f"笔记本 {notebook_id} 中找到 {len(existing_rag_notes)} 个已有RAG数据的笔记")
+            except Exception as e:
+                logger.error(f"获取已有RAG数据失败: {e}")
+                return []
+
+            # 需要更新的笔记列表
+            notes_to_update = []
+
+            for note_id in note_ids:
+                # 只处理已经有RAG数据的笔记
+                if note_id not in existing_rag_notes:
+                    logger.debug(f"笔记 {note_id} 没有RAG数据，跳过")
+                    continue
+
+                try:
+                    # 检查是否需要更新
+                    if await self._needs_update(note_id):
+                        notes_to_update.append(note_id)
+                    else:
+                        logger.debug(f"笔记 {note_id} 未更新，跳过")
+
+                    # 添加延迟避免API压力过大
+                    await asyncio.sleep(0.1)
+
+                except Exception as e:
+                    logger.warning(f"检查笔记更新状态失败: {note_id}, 错误: {e}")
+                    continue
+
+            logger.info(f"笔记本 {notebook_id} 共 {len(existing_rag_notes)} 个已有RAG数据的笔记，需要更新 {len(notes_to_update)} 个")
+            return notes_to_update
+
+        except Exception as e:
+            logger.error(f"获取需要更新的笔记列表失败: {e}")
+            return []
+
     async def build_knowledge_base(self,
                                   notebook_id: str,
                                   include_children: bool = True,
@@ -212,10 +409,13 @@ class RAGKnowledgeBase:
         total_inserted = 0
         for i in range(0, len(documents), batch_size):
             batch = documents[i:i + batch_size]
-            inserted = await self._insert_documents_batch(batch)
-            total_inserted += inserted
-
-            logger.info(f"已处理 {i + len(batch)}/{len(documents)} 个文档块")
+            try:
+                inserted = await self._insert_documents_batch(batch)
+                total_inserted += inserted
+                logger.info(f"已处理 {i + len(batch)}/{len(documents)} 个文档块")
+            except Exception as e:
+                logger.error(f"批量插入文档失败，已处理 {total_inserted} 个文档块，错误: {e}")
+                raise  # 重新抛出异常，终止整个构建流程
 
         logger.info(f"知识库构建完成，共处理 {total_inserted} 个文档块")
         return total_inserted
@@ -235,6 +435,7 @@ class RAGKnowledgeBase:
             contents = [doc.content for doc in documents]
             metadatas = [doc.metadata for doc in documents]
 
+            # 插入向量数据库
             self.collection.add(
                 ids=ids,
                 documents=contents,
@@ -245,7 +446,7 @@ class RAGKnowledgeBase:
 
         except Exception as e:
             logger.error(f"批量插入文档失败: {e}")
-            return 0
+            raise  # 重新抛出异常，终止流程
 
     async def get_notebook_document_count(self, notebook_id: str) -> int:
         """获取指定笔记本的文档数量"""
@@ -453,6 +654,130 @@ class RAGKnowledgeBase:
         except Exception as e:
             logger.error(f"获取笔记本统计信息失败: {e}")
             return {}
+
+    async def build_knowledge_base_incremental(self,
+                                            notebook_id: str,
+                                            include_children: bool = True,
+                                            chunk_size: int = 1000,
+                                            chunk_overlap: int = 200,
+                                            batch_size: int = 10) -> int:
+        """
+        增量构建知识库（只处理更新的文档）
+
+        Args:
+            notebook_id: 笔记本ID
+            include_children: 是否包含子笔记
+            chunk_size: 文档分块大小
+            chunk_overlap: 分块重叠大小
+            batch_size: 批处理大小
+
+        Returns:
+            int: 成功处理的文档数量
+        """
+        logger.info(f"开始增量构建笔记本 {notebook_id} 的知识库")
+
+        # 首先检查笔记本是否有RAG数据
+        if not await self._notebook_has_rag_data(notebook_id):
+            logger.info(f"笔记本 {notebook_id} 没有RAG数据，跳过增量更新")
+            return 0
+
+        # 获取所有笔记内容
+        note_contents = await self.content_extractor.get_all_note_contents(
+            notebook_id, include_children
+        )
+
+        if not note_contents:
+            logger.warning(f"笔记本 {notebook_id} 中没有找到笔记")
+            return 0
+
+        # 获取所有笔记ID
+        all_note_ids = [note.id for note in note_contents]
+
+        # 获取需要更新的笔记
+        notes_to_update_ids = await self._get_notes_to_update(notebook_id, all_note_ids)
+
+        if not notes_to_update_ids:
+            logger.info(f"笔记本 {notebook_id} 没有需要更新的笔记")
+            return 0
+
+        # 过滤出需要更新的笔记内容
+        notes_to_update = [
+            note for note in note_contents
+            if note.id in notes_to_update_ids
+        ]
+
+        logger.info(f"笔记本 {notebook_id} 需要更新 {len(notes_to_update)} 个笔记")
+
+        # 删除这些笔记的旧RAG数据
+        for note_id in notes_to_update_ids:
+            await self._clear_note_data(note_id)
+
+        # 处理需要更新的文档
+        documents = []
+        for note_content in notes_to_update:
+            # 分块处理
+            chunks = self._chunk_text(note_content.content, chunk_size, chunk_overlap)
+            for i, chunk in enumerate(chunks):
+                doc_id = f"{note_content.id}_chunk_{i}"
+                # 构建元数据，确保所有值都不是None
+                metadata = {
+                    "notebook_id": notebook_id,
+                    "note_id": note_content.id,
+                    "note_title": note_content.title or "",
+                    "note_path": note_content.path or "",
+                    "chunk_index": i,
+                    "total_chunks": len(chunks)
+                }
+
+                # 只有当parent_id不为None时才添加
+                if note_content.parent_id is not None:
+                    metadata["parent_id"] = note_content.parent_id
+
+                document = RAGDocument(
+                    id=doc_id,
+                    content=chunk,
+                    metadata=metadata,
+                    notebook_id=notebook_id,
+                    note_id=note_content.id,
+                    note_title=note_content.title,
+                    note_path=note_content.path
+                )
+                documents.append(document)
+
+        # 批量插入向量数据库
+        total_inserted = 0
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i:i + batch_size]
+            try:
+                inserted = await self._insert_documents_batch(batch)
+                total_inserted += inserted
+                logger.info(f"已处理 {i + len(batch)}/{len(documents)} 个文档块")
+            except Exception as e:
+                logger.error(f"增量批量插入文档失败，已处理 {total_inserted} 个文档块，错误: {e}")
+                raise  # 重新抛出异常，终止整个构建流程
+
+        logger.info(f"增量知识库构建完成，共处理 {total_inserted} 个文档块")
+        return total_inserted
+
+    async def _clear_note_data(self, note_id: str):
+        """
+        清空指定笔记的数据
+
+        Args:
+            note_id: 笔记ID
+        """
+        try:
+            # 获取该笔记的所有文档块
+            results = self.collection.get(
+                where={"note_id": note_id}
+            )
+
+            if results["ids"]:
+                self.collection.delete(ids=results["ids"])
+                logger.debug(f"已清空笔记 {note_id} 的现有RAG数据")
+
+        except Exception as e:
+            logger.error(f"清空笔记数据失败: {note_id}, 错误: {e}")
 
     async def rebuild_knowledge_base(self, notebook_id: str, **kwargs) -> int:
         """重建知识库"""

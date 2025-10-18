@@ -76,7 +76,7 @@ class SiYuanAPITraversal:
             if note_info:
                 root_notes.append(note_info)
 
-        logger.info(f"笔记本 {notebook_id} 通过API找到文档，构建了 {len(root_notes)} 个根笔记")
+        logger.info(f"笔记本 {notebook_id} 通过API找到文档，获取了 {len(root_notes)} 个根笔记")
         return root_notes
 
     async def get_all_note_ids(self, notebook_id: str) -> List[str]:

@@ -7,7 +7,7 @@
 import asyncio
 import os
 import sys
-from typing import List, Optional
+from typing import Optional
 
 # 添加项目根目录到路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -20,6 +20,7 @@ logger = get_logger(__name__)
 
 async def build_knowledge_base(notebook_id: Optional[str] = None,
                              force_rebuild: bool = False,
+                             incremental: bool = False,
                              embedding_model: Optional[str] = None):
     """
     构建知识库
@@ -27,6 +28,7 @@ async def build_knowledge_base(notebook_id: Optional[str] = None,
     Args:
         notebook_id: 笔记本ID，如果为None则处理所有笔记本
         force_rebuild: 是否强制重建
+        incremental: 是否使用增量更新模式
         embedding_model: 指定embedding模型，如果不指定则使用环境变量
     """
     # 获取配置
@@ -41,6 +43,7 @@ async def build_knowledge_base(notebook_id: Optional[str] = None,
     print(f"API Base: {api_base or 'https://api.openai.com/v1'}")
     print(f"API Key: {'已设置' if api_key else '未设置'}")
     print(f"强制重建: {force_rebuild}")
+    print(f"增量更新: {incremental}")
 
     # 判断embedding类型
     is_openai_embedding = embedding_model.startswith("text-embedding-") or embedding_model in [
@@ -58,19 +61,19 @@ async def build_knowledge_base(notebook_id: Optional[str] = None,
         if is_openai_embedding:
             print("🔧 使用OpenAI嵌入模型创建知识库...")
             rag_kb = create_rag_knowledge_base_with_openai(
-                persist_directory="./data/rag_db_openai",
+                persist_directory="./data/rag_db",
                 embedding_model=embedding_model,
                 api_key=api_key,
                 api_base=api_base,
-                collection_name="siyuan_notes_openai"
+                collection_name="siyuan_notes"
             )
         else:
             print("🔧 使用本地嵌入模型创建知识库...")
             rag_kb = create_rag_knowledge_base(
-                persist_directory="./data/rag_db_local",
+                persist_directory="./data/rag_db",
                 embedding_model=embedding_model,
                 use_openai_embedding=False,
-                collection_name="siyuan_notes_local"
+                collection_name="siyuan_notes"
             )
 
         print("✅ 知识库实例创建成功")
@@ -117,14 +120,30 @@ async def build_knowledge_base(notebook_id: Optional[str] = None,
         print(f"\n📖 处理笔记本: {nb_name} (ID: {nb_id})")
 
         try:
-            doc_count = await rag_kb.build_knowledge_base(
-                notebook_id=nb_id,
-                include_children=True,
-                chunk_size=1000,
-                chunk_overlap=200,
-                batch_size=10,
-                force_rebuild=force_rebuild
-            )
+            if incremental and not force_rebuild:
+                # 使用增量更新
+                print(f"🔄 使用增量更新模式处理笔记本 '{nb_name}'")
+                doc_count = await rag_kb.build_knowledge_base_incremental(
+                    notebook_id=nb_id,
+                    include_children=True,
+                    chunk_size=1000,
+                    chunk_overlap=200,
+                    batch_size=10
+                )
+            else:
+                # 使用完整构建
+                if force_rebuild:
+                    print(f"🔧 强制重建笔记本 '{nb_name}'")
+                else:
+                    print(f"📝 构建笔记本 '{nb_name}'")
+                doc_count = await rag_kb.build_knowledge_base(
+                    notebook_id=nb_id,
+                    include_children=True,
+                    chunk_size=1000,
+                    chunk_overlap=200,
+                    batch_size=10,
+                    force_rebuild=force_rebuild
+                )
 
             total_docs += doc_count
             print(f"✅ 笔记本 '{nb_name}' 处理完成，共 {doc_count} 个文档块")
@@ -132,7 +151,7 @@ async def build_knowledge_base(notebook_id: Optional[str] = None,
         except Exception as e:
             print(f"❌ 处理笔记本 '{nb_name}' 失败: {e}")
             logger.error(f"处理笔记本失败: {e}")
-            continue
+            raise  # 重新抛出异常，终止整个流程
 
     # 显示统计信息
     print(f"\n📊 知识库构建完成!")
@@ -167,6 +186,7 @@ async def main():
     parser = argparse.ArgumentParser(description="构建思源笔记RAG知识库")
     parser.add_argument("--notebook", "-n", type=str, help="指定笔记本ID（不指定则处理所有笔记本）")
     parser.add_argument("--force", "-f", action="store_true", help="强制重建现有知识库")
+    parser.add_argument("--incremental", "-i", action="store_true", help="使用增量更新模式（只更新已有RAG数据且有修改的文档）")
     parser.add_argument("--model", "-m", type=str, help="指定embedding模型")
 
     args = parser.parse_args()
@@ -174,6 +194,7 @@ async def main():
     await build_knowledge_base(
         notebook_id=args.notebook,
         force_rebuild=args.force,
+        incremental=args.incremental,
         embedding_model=args.model
     )
 
